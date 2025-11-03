@@ -32,60 +32,103 @@
     <button class="darf" onclick="gerarDARF()" style="display:none;" id="darfBtn">Gerar DARF</button>
   </div>
 
-  <script>
-    let trades = [];
+<script>
+  let trades = [];
 
-    async function puxar() {
-      const key = document.getElementById('apiKey').value;
-      const secret = document.getElementById('apiSecret').value;
-      const pair = document.getElementById('pair').value;
-      const inicio = document.getElementById('dataInicio').value;
+  async function puxar() {
+    const key = document.getElementById('apiKey').value.trim();
+    const secret = document.getElementById('apiSecret').value.trim();
+    const pair = document.getElementById('pair').value.trim().toUpperCase();
+    const inicio = document.getElementById('dataInicio').value;
 
-      if (!key || !secret) return alert('Preencha chaves!');
+    if (!key || !secret || !pair) {
+      return alert('Preencha API Key, Secret e Pair!');
+    }
 
-      const url = `/.netlify/functions/mb?key=${key}&secret=${secret}&pair=${pair}`;
-      try {
-        const res = await fetch(url);
-        const data = await res.json();
-        trades = data.filter(t => {
-          const d = t.executed_timestamp.split('T')[0];
-          return !inicio || d >= inicio;
-        }).map(t => ({
-          data: t.executed_timestamp.split('T')[0],
-          tipo: t.side.toLowerCase(),
-          par: pair.replace('BRL', '/BRL'),
-          qtd: parseFloat(t.qty),
-          preco: parseFloat(t.price),
-          total: parseFloat(t.qty) * parseFloat(t.price)
-        }));
+    const url = `/.netlify/functions/mb?key=${key}&secret=${secret}&pair=${pair}`;
+    const resultDiv = document.getElementById('result');
+    resultDiv.innerHTML = '<p>Carregando...</p>';
 
-        mostrarResultados();
-        document.getElementById('darfBtn').style.display = 'block';
-      } catch (err) {
-        alert('Erro: ' + err);
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!res.ok) {
+        resultDiv.innerHTML = `<p style="color:red;">Erro: ${data.error || 'Falha na API'}</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        return;
       }
-    }
 
-    function mostrarResultados() {
-      const tbody = '<tr><th>Data</th><th>Tipo</th><th>Par</th><th>Qtd</th><th>Preço</th><th>Total</th></tr>';
-      let compras = 0, vendas = 0;
-      trades.forEach(t => {
-        tbody += `<tr class="${t.tipo}"><td>${t.data}</td><td>${t.tipo.toUpperCase()}</td><td>${t.par}</td><td>${t.qtd}</td><td>R$ ${t.preco}</td><td>R$ ${t.total.toFixed(2)}</td></tr>`;
-        if (t.tipo === 'buy') compras += t.total; else vendas += t.total;
-      });
-      const lucro = vendas - compras;
-      const imposto = Math.max(0, vendas - 35000) * 0.15;
-      document.getElementById('result').innerHTML = `<table>${tbody}</table><div class="summary"><div><span>Compras:</span> <strong>R$ ${compras.toFixed(2)}</strong></div><div><span>Vendas:</span> <strong>R$ ${vendas.toFixed(2)}</strong></div><div><span>Lucro:</span> <strong>R$ ${lucro.toFixed(2)}</strong></div><div><span>Imposto:</span> <strong>R$ ${imposto.toFixed(2)}</strong></div></div><canvas id="chart"></canvas>`;
-      new Chart(document.getElementById('chart'), { type: 'doughnut', data: { labels: ['Compras','Vendas','Lucro','Imposto'], datasets: [{ data: [compras,vendas,Math.max(lucro,0),imposto], backgroundColor: ['#3b82f6','#ef4444','#10b981','#f59e0b'] }] } });
-    }
+      if (!Array.isArray(data)) {
+        resultDiv.innerHTML = `<p style="color:orange;">Aviso: Dados não são array</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        return;
+      }
 
-    function gerarDARF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      doc.text('DARF - Código 4600', 105, 20, { align: 'center' });
-      doc.text(`Imposto: R$ ${document.getElementById('imposto').innerText}`, 20, 40);
-      doc.save('DARF.pdf');
+      trades = data
+        .filter(t => t.executed_timestamp && t.side && t.qty && t.price)
+        .map(t => {
+          const d = t.executed_timestamp.split('T')[0];
+          return {
+            data: d,
+            tipo: t.side.toLowerCase(),
+            par: pair.replace('BRL', '/BRL'),
+            qtd: parseFloat(t.qty),
+            preco: parseFloat(t.price),
+            total: parseFloat(t.qty) * parseFloat(t.price)
+          };
+        })
+        .filter(t => !inicio || t.data >= inicio);
+
+      mostrarResultados();
+      document.getElementById('darfBtn').style.display = 'block';
+    } catch (err) {
+      resultDiv.innerHTML = `<p style="color:red;">Erro de rede: ${err.message}</p>`;
     }
-  </script>
+  }
+
+  function mostrarResultados() {
+    let html = `<h3>Negociações (${trades.length})</h3><table><tr><th>Data</th><th>Tipo</th><th>Par</th><th>Qtd</th><th>Preço</th><th>Total</th></tr>`;
+    let compras = 0, vendas = 0;
+
+    trades.forEach(t => {
+      html += `<tr class="${t.tipo}"><td>${t.data}</td><td>${t.tipo.toUpperCase()}</td><td>${t.par}</td><td>${t.qtd.toFixed(6)}</td><td>R$ ${t.preco.toLocaleString()}</td><td>R$ ${t.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td></tr>`;
+      if (t.tipo === 'buy') compras += t.total;
+      else vendas += t.total;
+    });
+
+    const lucro = vendas - compras;
+    const imposto = Math.max(0, vendas - 35000) * 0.15;
+
+    html += `</table><div class="summary">
+      <div><span>Compras:</span> <strong>R$ ${compras.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div>
+      <div><span>Vendas:</span> <strong>R$ ${vendas.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div>
+      <div><span>Lucro:</span> <strong>R$ ${lucro.toFixed(2)}</strong></div>
+      <div><span>Imposto:</span> <strong>R$ ${imposto.toFixed(2)}</strong></div>
+    </div><canvas id="chart"></canvas>`;
+
+    document.getElementById('result').innerHTML = html;
+
+    new Chart(document.getElementById('chart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Compras', 'Vendas', 'Lucro', 'Imposto'],
+        datasets: [{
+          data: [compras, vendas, Math.max(lucro, 0), imposto],
+          backgroundColor: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b']
+        }]
+      },
+      options: { responsive: true }
+    });
+  }
+
+  function gerarDARF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const imposto = (Math.max(0, parseFloat(document.querySelector('.summary strong:last-child').innerText.replace(/[^\d,]/g, '').replace(',', '.'))) || 0).toFixed(2);
+    doc.text('DARF - Código 4600', 105, 20, { align: 'center' });
+    doc.text(`Imposto Devido: R$ ${imposto}`, 20, 40);
+    doc.save('DARF_Cripto.pdf');
+  }
+</script>
 </body>
+
 </html>
