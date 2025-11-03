@@ -74,16 +74,14 @@
         }
 
         trades = data
-          .filter(t => t.executed_timestamp && t.side && t.qty && t.price)
-          .map(t => {
-            const d = t.executed_timestamp.split('T')[0];
-            return {
-              data: d,
-              tipo: t.side.toLowerCase(),
-              par: pair.replace('BRL', '/BRL'),
-              qtd: parseFloat(t.qty),
-              preco: parseFloat(t.price),
-              total: parseFloat(t.qty) * parseFloat(t.price)
+        trades = data.map(t => ({
+  data: t.executed_timestamp.split('T')[0],
+  tipo: t.operation.toLowerCase(), // "BUY" ou "SELL"
+  par: pair.replace('BRL', '/BRL'),
+  qtd: parseFloat(t.executed_qty),
+  preco: parseFloat(t.price),
+  total: parseFloat(t.executed_qty) * parseFloat(t.price)
+}));
             };
           })
           .filter(t => !inicio || t.data >= inicio);
@@ -148,3 +146,4 @@
   </script>
 </body>
 </html>
+
