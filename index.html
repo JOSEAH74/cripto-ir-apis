@@ -4,13 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cripto IR PRO</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <style>
     body { font-family: sans-serif; background: #0a1a2e; color: white; padding: 20px; }
     .container { max-width: 600px; margin: auto; background: #1a2a44; padding: 20px; border-radius: 15px; }
-    input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; }
-    button { background: #00a859; color: white; border: none; cursor: pointer; }
+    input, select, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; }
+    button { background: #00a859; color: white; cursor: pointer; }
     .darf { background: #e53e3e; }
     table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; }
     th, td { border: 1px solid #444; padding: 8px; text-align: left; }
@@ -18,117 +19,132 @@
     .summary { background: #2d3748; padding: 15px; border-radius: 10px; margin: 15px 0; }
     .summary div { display: flex; justify-content: space-between; margin: 5px 0; }
     canvas { width: 100%; height: 200px; }
+    .error { color: #f87171; background: #2d3748; padding: 10px; border-radius: 8px; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>🪙 Cripto IR PRO</h1>
+    <p>Calcule seu IR com negociações reais do MB</p>
     <input id="apiKey" placeholder="API Key">
     <input id="apiSecret" type="password" placeholder="API Secret">
-    <input id="pair" placeholder="Pair (ex: BTCBRL)" value="BTCBRL">
-    <input id="dataInicio" type="date">
+    <select id="pair">
+      <option value="BTCBRL">BTC/BRL</option>
+      <option value="ETHBRL">ETH/BRL</option>
+      <option value="USDTBRL">USDT/BRL</option>
+      <option value="XRPBRL">XRP/BRL</option>
+      <option value="LTCBRL">LTC/BRL</option>
+    </select>
+    <input id="dataInicio" type="date" placeholder="Data inicial (ex: 2024-01-01)">
     <button onclick="puxar()">Puxar Negociações</button>
     <div id="result"></div>
     <button class="darf" onclick="gerarDARF()" style="display:none;" id="darfBtn">Gerar DARF</button>
   </div>
 
-<script>
-  let trades = [];
+  <script>
+    let trades = [];
 
-  async function puxar() {
-    const key = document.getElementById('apiKey').value.trim();
-    const secret = document.getElementById('apiSecret').value.trim();
-    const pair = document.getElementById('pair').value.trim().toUpperCase();
-    const inicio = document.getElementById('dataInicio').value;
+    async function puxar() {
+      const key = document.getElementById('apiKey').value.trim();
+      const secret = document.getElementById('apiSecret').value.trim();
+      const pair = document.getElementById('pair').value.trim().toUpperCase();
+      const inicio = document.getElementById('dataInicio').value;
+      const resultDiv = document.getElementById('result');
 
-    if (!key || !secret || !pair) {
-      return alert('Preencha API Key, Secret e Pair!');
-    }
-
-    const url = `/.netlify/functions/mb?key=${key}&secret=${secret}&pair=${pair}`;
-    const resultDiv = document.getElementById('result');
-    resultDiv.innerHTML = '<p>Carregando...</p>';
-
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (!res.ok) {
-        resultDiv.innerHTML = `<p style="color:red;">Erro: ${data.error || 'Falha na API'}</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+      if (!key || !secret) {
+        resultDiv.innerHTML = '<p class="error">Preencha API Key e Secret!</p>';
         return;
       }
 
-      if (!Array.isArray(data)) {
-        resultDiv.innerHTML = `<p style="color:orange;">Aviso: Dados não são array</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
-        return;
+      resultDiv.innerHTML = '<p>Carregando...</p>';
+
+      const url = `/.netlify/functions/mb?key=${key}&secret=${secret}&pair=${pair}`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (!res.ok) {
+          resultDiv.innerHTML = `<p class="error">Erro: ${data.error || 'Falha na API'}</p><pre>${JSON.stringify(data.details || data, null, 2)}</pre>`;
+          return;
+        }
+
+        if (!Array.isArray(data)) {
+          resultDiv.innerHTML = `<p class="error">Aviso: Dados não são array</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+          return;
+        }
+
+        trades = data
+          .filter(t => t.executed_timestamp && t.side && t.qty && t.price)
+          .map(t => {
+            const d = t.executed_timestamp.split('T')[0];
+            return {
+              data: d,
+              tipo: t.side.toLowerCase(),
+              par: pair.replace('BRL', '/BRL'),
+              qtd: parseFloat(t.qty),
+              preco: parseFloat(t.price),
+              total: parseFloat(t.qty) * parseFloat(t.price)
+            };
+          })
+          .filter(t => !inicio || t.data >= inicio);
+
+        if (trades.length === 0) {
+          resultDiv.innerHTML = '<p class="error">Nenhuma negociação encontrada para este par.</p>';
+          return;
+        }
+
+        mostrarResultados();
+        document.getElementById('darfBtn').style.display = 'block';
+      } catch (err) {
+        resultDiv.innerHTML = `<p class="error">Erro de rede: ${err.message}</p>`;
       }
-
-      trades = data
-        .filter(t => t.executed_timestamp && t.side && t.qty && t.price)
-        .map(t => {
-          const d = t.executed_timestamp.split('T')[0];
-          return {
-            data: d,
-            tipo: t.side.toLowerCase(),
-            par: pair.replace('BRL', '/BRL'),
-            qtd: parseFloat(t.qty),
-            preco: parseFloat(t.price),
-            total: parseFloat(t.qty) * parseFloat(t.price)
-          };
-        })
-        .filter(t => !inicio || t.data >= inicio);
-
-      mostrarResultados();
-      document.getElementById('darfBtn').style.display = 'block';
-    } catch (err) {
-      resultDiv.innerHTML = `<p style="color:red;">Erro de rede: ${err.message}</p>`;
     }
-  }
 
-  function mostrarResultados() {
-    let html = `<h3>Negociações (${trades.length})</h3><table><tr><th>Data</th><th>Tipo</th><th>Par</th><th>Qtd</th><th>Preço</th><th>Total</th></tr>`;
-    let compras = 0, vendas = 0;
+    function mostrarResultados() {
+      let html = `<h3>Negociações (${trades.length})</h3><table><tr><th>Data</th><th>Tipo</th><th>Par</th><th>Qtd</th><th>Preço</th><th>Total</th></tr>`;
+      let compras = 0, vendas = 0;
 
-    trades.forEach(t => {
-      html += `<tr class="${t.tipo}"><td>${t.data}</td><td>${t.tipo.toUpperCase()}</td><td>${t.par}</td><td>${t.qtd.toFixed(6)}</td><td>R$ ${t.preco.toLocaleString()}</td><td>R$ ${t.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td></tr>`;
-      if (t.tipo === 'buy') compras += t.total;
-      else vendas += t.total;
-    });
+      trades.forEach(t => {
+        html += `<tr class="${t.tipo}"><td>${t.data}</td><td>${t.tipo.toUpperCase()}</td><td>${t.par}</td><td>${t.qtd.toFixed(6)}</td><td>R$ ${t.preco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td><td>R$ ${t.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td></tr>`;
+        if (t.tipo === 'buy') compras += t.total;
+        else vendas += t.total;
+      });
 
-    const lucro = vendas - compras;
-    const imposto = Math.max(0, vendas - 35000) * 0.15;
+      const lucro = vendas - compras;
+      const imposto = Math.max(0, vendas - 35000) * 0.15;
 
-    html += `</table><div class="summary">
-      <div><span>Compras:</span> <strong>R$ ${compras.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div>
-      <div><span>Vendas:</span> <strong>R$ ${vendas.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div>
-      <div><span>Lucro:</span> <strong>R$ ${lucro.toFixed(2)}</strong></div>
-      <div><span>Imposto:</span> <strong>R$ ${imposto.toFixed(2)}</strong></div>
-    </div><canvas id="chart"></canvas>`;
+      html += `</table><div class="summary">
+        <div><span>Compras:</span> <strong>R$ ${compras.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div>
+        <div><span>Vendas:</span> <strong>R$ ${vendas.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div>
+        <div><span>Lucro:</span> <strong>R$ ${lucro.toFixed(2)}</strong></div>
+        <div><span>Imposto:</span> <strong id="imposto">R$ ${imposto.toFixed(2)}</strong></div>
+      </div><canvas id="chart"></canvas>`;
 
-    document.getElementById('result').innerHTML = html;
+      document.getElementById('result').innerHTML = html;
 
-    new Chart(document.getElementById('chart'), {
-      type: 'doughnut',
-      data: {
-        labels: ['Compras', 'Vendas', 'Lucro', 'Imposto'],
-        datasets: [{
-          data: [compras, vendas, Math.max(lucro, 0), imposto],
-          backgroundColor: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b']
-        }]
-      },
-      options: { responsive: true }
-    });
-  }
+      new Chart(document.getElementById('chart'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Compras', 'Vendas', 'Lucro', 'Imposto'],
+          datasets: [{
+            data: [compras, vendas, Math.max(lucro, 0), imposto],
+            backgroundColor: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b']
+          }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+      });
+    }
 
-  function gerarDARF() {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    const imposto = (Math.max(0, parseFloat(document.querySelector('.summary strong:last-child').innerText.replace(/[^\d,]/g, '').replace(',', '.'))) || 0).toFixed(2);
-    doc.text('DARF - Código 4600', 105, 20, { align: 'center' });
-    doc.text(`Imposto Devido: R$ ${imposto}`, 20, 40);
-    doc.save('DARF_Cripto.pdf');
-  }
-</script>
+    function gerarDARF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const imposto = document.getElementById('imposto').innerText;
+      doc.text('DARF - Código 4600', 105, 20, { align: 'center' });
+      doc.text(`Imposto Devido: ${imposto}`, 20, 40);
+      doc.text(`Período: ${document.getElementById('dataInicio').value || 'Todo histórico'}`, 20, 50);
+      doc.save('DARF_Cripto.pdf');
+      alert('DARF gerado com sucesso!');
+    }
+  </script>
 </body>
-
 </html>
