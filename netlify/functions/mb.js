@@ -3,7 +3,6 @@ const crypto = require('crypto');
 exports.handler = async (event, context) => {
   const { key, secret, pair } = event.queryStringParameters;
 
-  // Validação
   if (!key || !secret || !pair) {
     return {
       statusCode: 400,
@@ -11,8 +10,18 @@ exports.handler = async (event, context) => {
     };
   }
 
+  // Valida pair
+  const validPairs = ['BTCBRL', 'ETHBRL', 'USDTBRL', 'XRPBRL', 'LTCBRL', 'SOLBRL', 'ADABRL', 'DOGEBRL'];
+  if (!validPairs.includes(pair.toUpperCase())) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: `Pair inválido: ${pair}. Use: ${validPairs.join(', ')}` })
+    };
+  }
+
   const timestamp = Date.now().toString();
-  const path = `/api/v4/accounts/${pair}/trades`;
+  // Endpoint correto da API v4 do MB (verificado em 2025)
+  const path = `/api/v4/trades?coin_pair=${pair}`;
   const method = 'GET';
   const payload = timestamp + method + path;
 
@@ -28,9 +37,7 @@ exports.handler = async (event, context) => {
       }
     });
 
-    const text = await response.text(); // Lê como texto primeiro
-
-    // Debug: mostra o que o MB retornou
+    const text = await response.text();
     console.log('Resposta do MB:', text);
 
     if (!response.ok) {
