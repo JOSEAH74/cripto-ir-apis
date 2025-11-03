@@ -19,8 +19,7 @@ exports.handler = async (event, context) => {
       headers: {
         'API-Key': key,
         'Timestamp': timestamp,
-        'Signature': signature,
-        'Content-Type': 'application/json'
+        'Signature': signature
       }
     });
 
@@ -39,7 +38,6 @@ exports.handler = async (event, context) => {
     }
 
     const trades = Array.isArray(data) ? data : [];
-
     return { statusCode: 200, body: JSON.stringify(trades) };
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
