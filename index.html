@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cripto IR PRO</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <style>
+    body { font-family: sans-serif; background: #0a1a2e; color: white; padding: 20px; }
+    .container { max-width: 600px; margin: auto; background: #1a2a44; padding: 20px; border-radius: 15px; }
+    input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; }
+    button { background: #00a859; color: white; border: none; cursor: pointer; }
+    .darf { background: #e53e3e; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; }
+    th, td { border: 1px solid #444; padding: 8px; text-align: left; }
+    .buy { color: #4ade80; } .sell { color: #f87171; }
+    .summary { background: #2d3748; padding: 15px; border-radius: 10px; margin: 15px 0; }
+    .summary div { display: flex; justify-content: space-between; margin: 5px 0; }
+    canvas { width: 100%; height: 200px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🪙 Cripto IR PRO</h1>
+    <input id="apiKey" placeholder="API Key">
+    <input id="apiSecret" type="password" placeholder="API Secret">
+    <input id="pair" placeholder="Pair (ex: BTCBRL)" value="BTCBRL">
+    <input id="dataInicio" type="date">
+    <button onclick="puxar()">Puxar Negociações</button>
+    <div id="result"></div>
+    <button class="darf" onclick="gerarDARF()" style="display:none;" id="darfBtn">Gerar DARF</button>
+  </div>
+
+  <script>
+    let trades = [];
+
+    async function puxar() {
+      const key = document.getElementById('apiKey').value;
+      const secret = document.getElementById('apiSecret').value;
+      const pair = document.getElementById('pair').value;
+      const inicio = document.getElementById('dataInicio').value;
+
+      if (!key || !secret) return alert('Preencha chaves!');
+
+      const url = `/.netlify/functions/mb?key=${key}&secret=${secret}&pair=${pair}`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        trades = data.filter(t => {
+          const d = t.executed_timestamp.split('T')[0];
+          return !inicio || d >= inicio;
+        }).map(t => ({
+          data: t.executed_timestamp.split('T')[0],
+          tipo: t.side.toLowerCase(),
+          par: pair.replace('BRL', '/BRL'),
+          qtd: parseFloat(t.qty),
+          preco: parseFloat(t.price),
+          total: parseFloat(t.qty) * parseFloat(t.price)
+        }));
+
+        mostrarResultados();
+        document.getElementById('darfBtn').style.display = 'block';
+      } catch (err) {
+        alert('Erro: ' + err);
+      }
+    }
+
+    function mostrarResultados() {
+      const tbody = '<tr><th>Data</th><th>Tipo</th><th>Par</th><th>Qtd</th><th>Preço</th><th>Total</th></tr>';
+      let compras = 0, vendas = 0;
+      trades.forEach(t => {
+        tbody += `<tr class="${t.tipo}"><td>${t.data}</td><td>${t.tipo.toUpperCase()}</td><td>${t.par}</td><td>${t.qtd}</td><td>R$ ${t.preco}</td><td>R$ ${t.total.toFixed(2)}</td></tr>`;
+        if (t.tipo === 'buy') compras += t.total; else vendas += t.total;
+      });
+      const lucro = vendas - compras;
+      const imposto = Math.max(0, vendas - 35000) * 0.15;
+      document.getElementById('result').innerHTML = `<table>${tbody}</table><div class="summary"><div><span>Compras:</span> <strong>R$ ${compras.toFixed(2)}</strong></div><div><span>Vendas:</span> <strong>R$ ${vendas.toFixed(2)}</strong></div><div><span>Lucro:</span> <strong>R$ ${lucro.toFixed(2)}</strong></div><div><span>Imposto:</span> <strong>R$ ${imposto.toFixed(2)}</strong></div></div><canvas id="chart"></canvas>`;
+      new Chart(document.getElementById('chart'), { type: 'doughnut', data: { labels: ['Compras','Vendas','Lucro','Imposto'], datasets: [{ data: [compras,vendas,Math.max(lucro,0),imposto], backgroundColor: ['#3b82f6','#ef4444','#10b981','#f59e0b'] }] } });
+    }
+
+    function gerarDARF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.text('DARF - Código 4600', 105, 20, { align: 'center' });
+      doc.text(`Imposto: R$ ${document.getElementById('imposto').innerText}`, 20, 40);
+      doc.save('DARF.pdf');
+    }
+  </script>
+</body>
+</html>
