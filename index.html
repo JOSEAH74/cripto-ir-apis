@@ -1,132 +1,68 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device=device-width, initial-scale=1.0">
-  <title>Cripto IR PRO</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <style>
-    body { font-family: sans-serif; background: #0a1a2e; color: white; padding: 20px; }
-    .container { max-width: 600px; margin: auto; background: #1a2a44; padding: 20px; border-radius: 15px; }
-    input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; }
-    button { background: #00a859; color: white; border: none; cursor: pointer; font-weight: bold; }
-    .darf { background: #e53e3e; }
-    .debug { background: #000; color: #0f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 200px; overflow: auto; margin: 10px 0; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; }
-    th, td { border: 1px solid #444; padding: 8px; text-align: left; }
-    .buy { color: #4ade80; } .sell { color: #f87171; }
-    .summary { background: #2d3748; padding: 15px; border-radius: 10px; margin: 15px 0; }
-    .summary div { display: flex; justify-content: space-between; margin: 5px 0; }
-    canvas { width: 100%; height: 200px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>CRIPTO IR PRO</h1>
-    <input id="apiKey" placeholder="API Key do MB">
-    <input id="apiSecret" type="password" placeholder="API Secret">
-    <input id="dataInicio" type="date">
-    <button onclick="puxarTudo()">Puxar TODOS os Pares</button>
-    <div id="debug" class="debug"></div>
-    <div id="result"></div>
-    <button class="darf" onclick="gerarDARF()" style="display:none;" id="darfBtn">Gerar DARF</button>
-  </div>
+async function puxarTudo() {
+  const key = document.getElementById('apiKey').value.trim();
+  const secret = document.getElementById('apiSecret').value.trim();
+  const inicio = document.getElementById('dataInicio').value;
+  const debug = document.getElementById('debug');
+  debug.style.display = 'block';
+  debug.innerHTML = '<p>Iniciando...</p>';
 
-  <script>
-    let trades = [];
-    const pares = ['BTCBRL', 'ETHBRL', 'USDTBRL', 'XRPBRL', 'LTCBRL'];
+  if (!key || !secret) {
+    debug.innerHTML += '<p style="color:red;">Preencha Key e Secret!</p>';
+    return;
+  }
 
-    async function puxarTudo() {
-      const key = document.getElementById('apiKey').value.trim();
-      const secret = document.getElementById('apiSecret').value.trim();
-      const inicio = document.getElementById('dataInicio').value;
-      const debug = document.getElementById('debug');
-      debug.style.display = 'block';
-      debug.innerHTML = '<p>Iniciando...</p>';
-
-      if (!key || !secret) {
-        debug.innerHTML += '<p style="color:red;">Preencha Key e Secret!</p>';
-        return;
+  trades = [];
+  for (const pair of pares) {
+    debug.innerHTML += `<p>--- ${pair} ---</p>`;
+    const url = `/.netlify/functions/mb?key=${key}&secret=${secret}&pair=${pair}`;
+    
+    try {
+      const res = await fetch(url);
+      const text = await res.text();
+      debug.innerHTML += `<p>Status: ${res.status}</p>`;
+      
+      if (!res.ok) {
+        debug.innerHTML += `<p style="color:orange;">Erro: ${text}</p>`;
+        continue;
       }
 
-      // Puxa Account ID automaticamente
-      debug.innerHTML += '<p>Puxando Account ID...</p>';
-      let accountId;
-      try {
-        const res = await fetch(`/.netlify/functions/mb?key=${key}&secret=${secret}&action=get_accounts`);
-        const data = await res.json();
-        if (data && data.length > 0) {
-          accountId = data[0].id; // Pega o primeiro (default)
-          debug.innerHTML += `<p>Account ID: ${accountId}</p>`;
-        } else {
-          debug.innerHTML += '<p style="color:red;">Nenhuma conta encontrada!</p>';
-          return;
-        }
-      } catch (err) {
-        debug.innerHTML += `<p style="color:red;">Erro Account ID: ${err.message}</p>`;
-        return;
+      let data;
+      try { data = JSON.parse(text); } catch (e) { 
+        debug.innerHTML += `<p style="color:orange;">JSON inválido: ${text}</p>`;
+        continue;
       }
 
-      // Puxa trades pra cada par
-      trades = [];
-      for (const pair of pares) {
-        debug.innerHTML += `<p>--- ${pair} ---</p>`;
-        const url = `/.netlify/functions/mb?key=${key}&secret=${secret}&action=get_trades&account_id=${accountId}&pair=${pair}`;
-        
-        try {
-          const res = await fetch(url);
-          const text = await res.text();
-          debug.innerHTML += `<p>Status: ${res.status}</p>`;
-          
-          if (!res.ok) {
-            debug.innerHTML += `<p style="color:orange;">Erro: ${text}</p>`;
-            continue;
-          }
-
-          let data;
-          try { data = JSON.parse(text); } catch (e) { 
-            debug.innerHTML += `<p style="color:orange;">JSON inválido: ${text}</p>`;
-            continue;
-          }
-
-          if (!Array.isArray(data)) {
-            debug.innerHTML += `<p style="color:orange;">Não é array: ${JSON.stringify(data)}</p>`;
-            continue;
-          }
-
-          const filtered = data
-            .filter(t => t.executed_timestamp && t.side && t.executed_qty && t.price)
-            .map(t => {
-              const d = t.executed_timestamp.split('T')[0];
-              return {
-                data: d,
-                tipo: t.side.toLowerCase(),
-                par: pair.replace('BRL', '/BRL'),
-                qtd: parseFloat(t.executed_qty),
-                preco: parseFloat(t.price),
-                total: parseFloat(t.executed_qty) * parseFloat(t.price)
-              };
-            })
-            .filter(t => !inicio || t.data >= inicio);
-
-          trades = trades.concat(filtered);
-          debug.innerHTML += `<p>Trades: ${filtered.length}</p>`;
-        } catch (err) {
-          debug.innerHTML += `<p style="color:red;">Erro fetch: ${err.message}</p>`;
-        }
+      if (!Array.isArray(data)) {
+        debug.innerHTML += `<p style="color:orange;">Não é array: ${JSON.stringify(data)}</p>`;
+        continue;
       }
 
-      if (trades.length === 0) {
-        debug.innerHTML += '<p style="color:orange;">Nenhuma negociação encontrada.</p>';
-      } else {
-        mostrarResultados();
-        document.getElementById('darfBtn').style.display = 'block';
-      }
+      const filtered = data
+        .filter(t => t.date && t.type && t.amount && t.price)
+        .map(t => {
+          const d = t.date.split(' ')[0];
+          return {
+            data: d,
+            tipo: t.type.toLowerCase(),
+            par: pair.replace('BRL', '/BRL'),
+            qtd: parseFloat(t.amount),
+            preco: parseFloat(t.price),
+            total: parseFloat(t.amount) * parseFloat(t.price)
+          };
+        })
+        .filter(t => !inicio || t.data >= inicio);
+
+      trades = trades.concat(filtered);
+      debug.innerHTML += `<p>Trades: ${filtered.length}</p>`;
+    } catch (err) {
+      debug.innerHTML += `<p style="color:red;">Erro fetch: ${err.message}</p>`;
     }
+  }
 
-    // Funções mostrarResultados e gerarDARF iguais ao anterior...
-    // (cole as mesmas do código anterior)
-  </script>
-</body>
-</html>
+  if (trades.length === 0) {
+    debug.innerHTML += '<p style="color:orange;">Nenhuma negociação encontrada.</p>';
+  } else {
+    mostrarResultados();
+    document.getElementById('darfBtn').style.display = 'block';
+  }
+}
