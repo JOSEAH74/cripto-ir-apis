@@ -1,156 +1,46 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cripto IR PRO</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <style>
-    body { font-family: sans-serif; background: #0a1a2e; color: white; padding: 20px; }
-    .container { max-width: 600px; margin: auto; background: #1a2a44; padding: 20px; border-radius: 15px; }
-    input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; }
-    button { background: #00a859; color: white; border: none; cursor: pointer; font-weight: bold; }
-    .darf { background: #e53e3e; }
-    .debug { background: #000; color: #0f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 200px; overflow: auto; margin: 10px 0; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; }
-    th, td { border: 1px solid #444; padding: 8px; text-align: left; }
-    .buy { color: #4ade80; } .sell { color: #f87171; }
-    .summary { background: #2d3748; padding: 15px; border-radius: 10px; margin: 15px 0; }
-    .summary div { display: flex; justify-content: space-between; margin: 5px 0; }
-    canvas { width: 100%; height: 200px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>CRIPTO IR PRO</h1>
-    <input id="apiKey" placeholder="API Key do MB">
-    <input id="apiSecret" type="password" placeholder="API Secret">
-    <input id="dataInicio" type="date">
-    <button onclick="puxarTudo()">Puxar TODOS os Pares</button>
-    <div id="debug" class="debug"></div>
-    <div id="result"></div>
-    <button class="darf" onclick="gerarDARF()" style="display:none;" id="darfBtn">Gerar DARF</button>
-  </div>
+const crypto = require('crypto');
 
-  <script>
-    let trades = [];
-    const pares = ['BTCBRL', 'ETHBRL', 'USDTBRL', 'XRPBRL', 'LTCBRL'];
+exports.handler = async (event, context) => {
+  const { key, secret, pair } = event.queryStringParameters;
 
-    async function puxarTudo() {
-      const key = document.getElementById('apiKey').value.trim();
-      const secret = document.getElementById('apiSecret').value.trim();
-      const inicio = document.getElementById('dataInicio').value;
-      const debug = document.getElementById('debug');
-      debug.style.display = 'block';
-      debug.innerHTML = '<p>Iniciando...</p>';
+  if (!key || !secret || !pair) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Faltam key, secret ou pair' }) };
+  }
 
-      if (!key || !secret) {
-        debug.innerHTML += '<p style="color:red;">Preencha Key e Secret!</p>';
-        return;
+  const timestamp = Date.now().toString();
+  const path = `/api/v4/trades?coin_pair=${pair}`;
+  const method = 'GET';
+  const payload = timestamp + method + path;
+
+  const signature = crypto.createHmac('sha512', secret).update(payload).digest('base64');
+
+  try {
+    const response = await fetch(`https://api.mercadobitcoin.net${path}`, {
+      headers: {
+        'API-Key': key,
+        'Timestamp': timestamp,
+        'Signature': signature
       }
+    });
 
-      trades = [];
-      for (const pair of pares) {
-        debug.innerHTML += `<p>--- ${pair} ---</p>`;
-        const url = `/.netlify/functions/mb?key=${key}&secret=${secret}&pair=${pair}`;
-        
-        try {
-          const res = await fetch(url);
-          const text = await res.text();
-          debug.innerHTML += `<p>Status: ${res.status}</p>`;
-          
-          if (!res.ok) {
-            debug.innerHTML += `<p style="color:orange;">Erro: ${text}</p>`;
-            continue;
-          }
+    const text = await response.text();
+    console.log('MB Response:', text);
 
-          let data;
-          try { 
-            data = JSON.parse(text); 
-          } catch (e) { 
-            debug.innerHTML += `<p style="color:orange;">JSON inválido: ${text}</p>`;
-            continue;
-          }
-
-          if (!Array.isArray(data)) {
-            debug.innerHTML += `<p style="color:orange;">Não é array: ${JSON.stringify(data)}</p>`;
-            continue;
-          }
-
-          const filtered = data
-            .filter(t => t.date && t.type && t.amount && t.price)
-            .map(t => {
-              const d = t.date.split(' ')[0];
-              return {
-                data: d,
-                tipo: t.type.toLowerCase(),
-                par: pair.replace('BRL', '/BRL'),
-                qtd: parseFloat(t.amount),
-                preco: parseFloat(t.price),
-                total: parseFloat(t.amount) * parseFloat(t.price)
-              };
-            })
-            .filter(t => !inicio || t.data >= inicio);
-
-          trades = trades.concat(filtered);
-          debug.innerHTML += `<p>Trades: ${filtered.length}</p>`;
-        } catch (err) {
-          debug.innerHTML += `<p style="color:red;">Erro fetch: ${err.message}</p>`;
-        }
-      }
-
-      if (trades.length === 0) {
-        debug.innerHTML += '<p style="color:orange;">Nenhuma negociação encontrada.</p>';
-      } else {
-        mostrarResultados();
-        document.getElementById('darfBtn').style.display = 'block';
-      }
+    if (!response.ok) {
+      return { statusCode: response.status, body: JSON.stringify({ error: `MB Error ${response.status}`, details: text }) };
     }
 
-    function mostrarResultados() {
-      let html = `<h3>Negociações (${trades.length})</h3><table><tr><th>Data</th><th>Tipo</th><th>Par</th><th>Qtd</th><th>Preço</th><th>Total</th></tr>`;
-      let compras = 0, vendas = 0;
-
-      trades.forEach(t => {
-        html += `<tr class="${t.tipo}"><td>${t.data}</td><td>${t.tipo.toUpperCase()}</td><td>${t.par}</td><td>${t.qtd.toFixed(6)}</td><td>R$ ${t.preco.toLocaleString()}</td><td>R$ ${t.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td></tr>`;
-        if (t.tipo === 'buy') compras += t.total;
-        else vendas += t.total;
-      });
-
-      const lucro = vendas - compras;
-      const imposto = Math.max(0, vendas - 35000) * 0.15;
-
-      html += `</table><div class="summary">
-        <48><span>Compras:</span> <strong>R$ ${compras.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div>
-        <div><span>Vendas:</span> <strong>R$ ${vendas.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div>
-        <div><span>Lucro:</span> <strong>R$ ${lucro.toFixed(2)}</strong></div>
-        <div><span>Imposto:</span> <strong>R$ ${imposto.toFixed(2)}</strong></div>
-      </div><canvas id="chart"></canvas>`;
-
-      document.getElementById('result').innerHTML = html;
-
-      new Chart(document.getElementById('chart'), {
-        type: 'doughnut',
-        data: {
-          labels: ['Compras', 'Vendas', 'Lucro', 'Imposto'],
-          datasets: [{
-            data: [compras, vendas, Math.max(lucro, 0), imposto],
-            backgroundColor: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b']
-          }]
-        },
-        options: { responsive: true }
-      });
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      return { statusCode: 500, body: JSON.stringify({ error: 'JSON inválido', raw: text }) };
     }
 
-    function gerarDARF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      const imposto = document.querySelector('.summary strong:last-child').innerText;
-      doc.text('DARF - Código 4600', 105, 20, { align: 'center' });
-      doc.text(`Imposto: ${imposto}`, 20, 40);
-      doc.save('DARF_Cripto.pdf');
-    }
-  </script>
-</body>
-</html>
+    // Para Trade API, data é array de trades
+    const trades = Array.isArray(data) ? data : (data.response || data.data || []);
+    return { statusCode: 200, body: JSON.stringify(trades) };
+  } catch (err) {
+    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+  }
+};
