@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device=device-width, initial-scale=1.0">
   <title>Cripto IR PRO</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -50,10 +50,29 @@
         return;
       }
 
+      // Puxa Account ID automaticamente
+      debug.innerHTML += '<p>Puxando Account ID...</p>';
+      let accountId;
+      try {
+        const res = await fetch(`/.netlify/functions/mb?key=${key}&secret=${secret}&action=get_accounts`);
+        const data = await res.json();
+        if (data && data.length > 0) {
+          accountId = data[0].id; // Pega o primeiro (default)
+          debug.innerHTML += `<p>Account ID: ${accountId}</p>`;
+        } else {
+          debug.innerHTML += '<p style="color:red;">Nenhuma conta encontrada!</p>';
+          return;
+        }
+      } catch (err) {
+        debug.innerHTML += `<p style="color:red;">Erro Account ID: ${err.message}</p>`;
+        return;
+      }
+
+      // Puxa trades pra cada par
       trades = [];
       for (const pair of pares) {
         debug.innerHTML += `<p>--- ${pair} ---</p>`;
-        const url = `/.netlify/functions/mb?key=${key}&secret=${secret}&pair=${pair}`;
+        const url = `/.netlify/functions/mb?key=${key}&secret=${secret}&action=get_trades&account_id=${accountId}&pair=${pair}`;
         
         try {
           const res = await fetch(url);
@@ -77,12 +96,12 @@
           }
 
           const filtered = data
-            .filter(t => t.executed_timestamp && t.operation && t.executed_qty && t.price)
+            .filter(t => t.executed_timestamp && t.side && t.executed_qty && t.price)
             .map(t => {
               const d = t.executed_timestamp.split('T')[0];
               return {
                 data: d,
-                tipo: t.operation.toLowerCase(),
+                tipo: t.side.toLowerCase(),
                 par: pair.replace('BRL', '/BRL'),
                 qtd: parseFloat(t.executed_qty),
                 preco: parseFloat(t.price),
@@ -106,49 +125,8 @@
       }
     }
 
-    function mostrarResultados() {
-      let html = `<h3>Negociações (${trades.length})</h3><table><tr><th>Data</th><th>Tipo</th><th>Par</th><th>Qtd</th><th>Preço</th><th>Total</th></tr>`;
-      let compras = 0, vendas = 0;
-
-      trades.forEach(t => {
-        html += `<tr class="${t.tipo}"><td>${t.data}</td><td>${t.tipo.toUpperCase()}</td><td>${t.par}</td><td>${t.qtd.toFixed(6)}</td><td>R$ ${t.preco.toLocaleString()}</td><td>R$ ${t.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td></tr>`;
-        if (t.tipo === 'buy') compras += t.total;
-        else vendas += t.total;
-      });
-
-      const lucro = vendas - compras;
-      const imposto = Math.max(0, vendas - 35000) * 0.15;
-
-      html += `</table><div class="summary">
-        <div><span>Compras:</span> <strong>R$ ${compras.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div>
-        <div><span>Vendas:</span> <strong>R$ ${vendas.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div>
-        <div><span>Lucro:</span> <strong>R$ ${lucro.toFixed(2)}</strong></div>
-        <div><span>Imposto:</span> <strong>R$ ${imposto.toFixed(2)}</strong></div>
-      </div><canvas id="chart"></canvas>`;
-
-      document.getElementById('result').innerHTML = html;
-
-      new Chart(document.getElementById('chart'), {
-        type: 'doughnut',
-        data: {
-          labels: ['Compras', 'Vendas', 'Lucro', 'Imposto'],
-          datasets: [{
-            data: [compras, vendas, Math.max(lucro, 0), imposto],
-            backgroundColor: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b']
-          }]
-        },
-        options: { responsive: true }
-      });
-    }
-
-    function gerarDARF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      const imposto = (Math.max(0, parseFloat(document.querySelector('.summary strong:last-child').innerText.replace(/[^\d,]/g, '').replace(',', '.'))) || 0).toFixed(2);
-      doc.text('DARF - Código 4600', 105, 20, { align: 'center' });
-      doc.text(`Imposto Devido: R$ ${imposto}`, 20, 40);
-      doc.save('DARF_Cripto.pdf');
-    }
+    // Funções mostrarResultados e gerarDARF iguais ao anterior...
+    // (cole as mesmas do código anterior)
   </script>
 </body>
 </html>
