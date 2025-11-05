@@ -8,7 +8,7 @@ exports.handler = async (event, context) => {
   }
 
   const timestamp = Date.now().toString();
-  const path = `/api/v4/${pair}/trades`;
+  const path = `/api/v4/trades?coin_pair=${pair}`;
   const method = 'GET';
   const payload = timestamp + method + path;
 
@@ -37,7 +37,8 @@ exports.handler = async (event, context) => {
       return { statusCode: 500, body: JSON.stringify({ error: 'JSON inválido', raw: text }) };
     }
 
-    const trades = Array.isArray(data) ? data : [];
+    // Para Trade API, data é array de trades
+    const trades = Array.isArray(data) ? data : (data.response || data.data || []);
     return { statusCode: 200, body: JSON.stringify(trades) };
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
