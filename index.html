@@ -3,176 +3,167 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cripto IR PRO</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <title>Cripto IR Brasil</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
-    body { font-family: sans-serif; background: #0a1a2e; color: white; padding: 20px; }
-    .container { max-width: 600px; margin: auto; background: #1a2a44; padding: 20px; border-radius: 15px; }
-    input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; }
-    button { background: #00a859; color: white; border: none; cursor: pointer; font-weight: bold; }
-    .darf { background: #e53e3e; }
-    .debug { background: #000; color: #0f0; padding: 10px; border-radius: 8px; font-size: 12px; max-height: 200px; overflow: auto; margin: 10px 0; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 12px; }
-    th, td { border: 1px solid #444; padding: 8px; text-align: left; }
-    .buy { color: #4ade80; } .sell { color: #f87171; }
-    .summary { background: #2d3748; padding: 15px; border-radius: 10px; margin: 15px 0; }
-    .summary div { display: flex; justify-content: space-between; margin: 5px 0; }
-    canvas { width: 100%; height: 200px; }
-    .upload-btn { background: #3b82f6; }
+    .gradient { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .card { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 16px; }
+    .btn { @apply bg-green-500 text-white px-6 py-3 rounded-lg font-bold hover:bg-green-600; }
   </style>
 </head>
-<body>
-  <div class="container">
-    <h1>CRIPTO IR PRO</h1>
-    <input id="apiKey" placeholder="API Key do MB">
-    <input id="apiSecret" type="password" placeholder="API Secret">
-    <input id="dataInicio" type="date">
-    <button onclick="puxarTudo()">Puxar via API</button>
-    <button class="upload-btn" onclick="document.getElementById('csvFile').click()">Ou Upload CSV</button>
-    <input type="file" id="csvFile" accept=".csv" onchange="parseCSV(event)" style="display:none;">
-    <div id="debug" class="debug"></div>
-    <div id="result"></div>
-    <button class="darf" onclick="gerarDARF()" style="display:none;" id="darfBtn">Gerar DARF</button>
+<body class="gradient min-h-screen text-white">
+
+  <!-- Landing (se não pago) -->
+  <div id="landing">
+    <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
+      <h1 class="text-2xl font-bold">Cripto IR Brasil</h1>
+      <button onclick="showLogin()" class="bg-blue-600 px-6 py-2 rounded-lg">Entrar</button>
+    </nav>
+
+    <section class="text-center py-16 px-6">
+      <h2 class="text-5xl font-bold mb-6">IR de Cripto Fácil</h2>
+      <p class="text-xl mb-8">Conecte com MB, calcule IR e gere DARF em minutos.</p>
+      <button onclick="scrollTo('plans')" class="btn text-lg px-8 py-4">Assinar Agora</button>
+    </section>
+
+    <section id="plans" class="py-16 px-6">
+      <h3 class="text-3xl font-bold text-center mb-12">Planos</h3>
+      <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        <div class="card p-8 text-center">
+          <h4 class="text-2xl font-bold mb-4">Mensal</h4>
+          <p class="text-5xl font-bold text-green-400 mb-2">R$ 14,99</p>
+          <p class="text-sm text-gray-300 mb-6">via PIX</p>
+          <button onclick="pagar('mensal')" class="btn w-full mt-6">Assinar Mensal</button>
+        </div>
+        <div class="card p-8 text-center border-2 border-blue-400">
+          <div class="bg-blue-600 text-xs px-3 py-1 rounded-full inline-block mb-4">MAIS VANTAJOSO</div>
+          <h4 class="text-2xl font-bold mb-4">Anual</h4>
+          <p class="text-5xl font-bold text-blue-400 mb-2">R$ 99,00</p>
+          <p class="text-sm text-gray-300 mb-6">à vista via PIX</p>
+          <button onclick="pagar('anual')" class="bg-blue-600 text-white px-6 py-3 rounded-lg w-full mt-6">Assinar Anual</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- App (só se pago) -->
+  <div id="app" class="hidden container mx-auto px-6 py-8">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold">Bem-vindo!</h1>
+      <button onclick="logout()" class="text-sm text-gray-300">Sair</button>
+    </div>
+    
+    <div class="bg-white/10 p-6 rounded-xl mb-6">
+      <h2 class="text-xl font-bold mb-4">Conectar com Mercado Bitcoin</h2>
+      <input id="apiKey" placeholder="API Key" class="w-full p-3 mb-3 rounded-lg bg-white/20 text-white placeholder-gray-400">
+      <input id="apiSecret" type="password" placeholder="API Secret" class="w-full p-3 mb-3 rounded-lg bg-white/20 text-white placeholder-gray-400">
+      <button onclick="puxarMB()" class="bg-blue-600 text-white w-full py-3 rounded-lg font-bold">Puxar Negociações</button>
+    </div>
+
+    <div id="resultado" class="bg-white/10 p-6 rounded-xl text-sm"></div>
+  </div>
+
+  <!-- Modal Login -->
+  <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden">
+    <div class="bg-white text-black p-6 rounded-xl w-full max-w-sm mx-4">
+      <h3 class="text-xl font-bold mb-4">Login</h3>
+      <input id="email" placeholder="E-mail" class="w-full p-3 mb-3 rounded-lg border">
+      <input id="senha" type="password" placeholder="Senha" class="w-full p-3 mb-4 rounded-lg border">
+      <button onclick="login()" class="bg-green-500 text-white w-full py-3 rounded-lg">Entrar</button>
+    </div>
+  </div>
+
+  <!-- Modal PIX -->
+  <div id="pixModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden">
+    <div class="bg-white text-black p-6 rounded-xl max-w-sm w-full mx-4 text-center">
+      <h3 id="tituloPix" class="text-xl font-bold mb-4"></h3>
+      <p id="valorPix" class="text-2xl font-bold mb-4"></p>
+      <canvas id="qrCanvas" class="mx-auto mb-4"></canvas>
+      <p class="text-sm mb-4">Escaneie com seu app bancário</p>
+      <button onclick="confirmar()" class="bg-green-500 text-white w-full py-3 rounded-lg mb-2">Paguei!</button>
+      <button onclick="fecharPix()" class="text-gray-600">Cancelar</button>
+    </div>
   </div>
 
   <script>
-    let trades = [];
-    const pares = ['BTCBRL', 'ETHBRL', 'USDTBRL', 'XRPBRL', 'LTCBRL'];
+    // Verifica assinatura
+    function verificarAssinatura() {
+      const exp = localStorage.getItem('expiracao');
+      if (exp && new Date(exp) > new Date()) {
+        document.getElementById('landing').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+      }
+    }
+    verificarAssinatura();
 
-    async function puxarTudo() {
+    function showLogin() {
+      document.getElementById('loginModal').classList.remove('hidden');
+    }
+
+    function login() {
+      const email = document.getElementById('email').value;
+      if (email) {
+        localStorage.setItem('user', email);
+        document.getElementById('loginModal').classList.add('hidden');
+        verificarAssinatura();
+      }
+    }
+
+    function logout() {
+      localStorage.clear();
+      location.reload();
+    }
+
+    function pagar(plano) {
+      const valor = plano === 'mensal' ? 14.99 : 99.00;
+      document.getElementById('tituloPix').innerText = `Assinatura ${plano.charAt(0).toUpperCase() + plano.slice(1)}`;
+      document.getElementById('valorPix').innerText = `R$ ${valor.toFixed(2)}`;
+      QRCode.toCanvas(document.getElementById('qrCanvas'), `PIX MOCK ${valor}`, { width: 200 });
+      document.getElementById('pixModal').classList.remove('hidden');
+      window.planoAtual = plano;
+    }
+
+    function fecharPix() {
+      document.getElementById('pixModal').classList.add('hidden');
+    }
+
+    function confirmar() {
+      const dias = window.planoAtual === 'mensal' ? 30 : 365;
+      const exp = new Date();
+      exp.setDate(exp.getDate() + dias);
+      localStorage.setItem('assinatura', 'ativa');
+      localStorage.setItem('expiracao', exp.toISOString());
+      alert('Assinatura ativada com sucesso!');
+      location.reload();
+    }
+
+    function scrollTo(id) {
+      document.getElementById(id).scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Chama o backend (mesmo site)
+    async function puxarMB() {
       const key = document.getElementById('apiKey').value.trim();
       const secret = document.getElementById('apiSecret').value.trim();
-      const inicio = document.getElementById('dataInicio').value;
-      const debug = document.getElementById('debug');
-      debug.style.display = 'block';
-      debug.innerHTML = '<p>Iniciando...</p>';
+      if (!key || !secret) return alert('Preencha key e secret');
 
-      if (!key || !secret) {
-        debug.innerHTML += '<p style="color:red;">Preencha Key e Secret!</p>';
+      const res = await fetch(`/.netlify/functions/mb?key=${key}&secret=${secret}&pair=BTCBRL`);
+      const text = await res.text();
+      
+      if (!res.ok) {
+        document.getElementById('resultado').innerHTML = `<p class="text-red-400">Erro: ${text}</p>`;
         return;
       }
 
-      trades = [];
-      for (const pair of pares) {
-        debug.innerHTML += `<p>--- ${pair} ---</p>`;
-        const url = `/.netlify/functions/mb?key=${key}&secret=${secret}&pair=${pair}`;
-        
-        try {
-          const res = await fetch(url);
-          const text = await res.text();
-          debug.innerHTML += `<p>Status: ${res.status}</p>`;
-          
-          if (!res.ok) {
-            debug.innerHTML += `<p style="color:orange;">Erro: ${text}</p>`;
-            continue;
-          }
-
-          let data;
-          try { data = JSON.parse(text); } catch (e) { 
-            debug.innerHTML += `<p style="color:orange;">JSON inválido: ${text}</p>`;
-            continue;
-          }
-
-          if (!Array.isArray(data)) {
-            debug.innerHTML += `<p style="color:orange;">Não é array: ${JSON.stringify(data)}</p>`;
-            continue;
-          }
-
-          const filtered = data
-            .filter(t => t.executed_timestamp && t.side && t.qty && t.price)
-            .map(t => {
-              const d = t.executed_timestamp.split('T')[0];
-              return {
-                data: d,
-                tipo: t.side.toLowerCase(),
-                par: pair.replace('BRL', '/BRL'),
-                qtd: parseFloat(t.qty),
-                preco: parseFloat(t.price),
-                total: parseFloat(t.qty) * parseFloat(t.price)
-              };
-            })
-            .filter(t => !inicio || t.data >= inicio);
-
-          trades = trades.concat(filtered);
-          debug.innerHTML += `<p>Trades: ${filtered.length}</p>`;
-        } catch (err) {
-          debug.innerHTML += `<p style="color:red;">Erro fetch: ${err.message}</p>`;
-        }
+      let data;
+      try { data = JSON.parse(text); } catch { 
+        document.getElementById('resultado').innerHTML = `<p class="text-orange-400">JSON inválido: ${text}</p>`;
+        return;
       }
 
-      if (trades.length === 0) {
-        debug.innerHTML += '<p style="color:orange;">Nenhuma negociação encontrada. Tente CSV.</p>';
-      } else {
-        mostrarResultados();
-        document.getElementById('darfBtn').style.display = 'block';
-      }
-    }
-
-    function parseCSV(event) {
-      const file = event.target.files[0];
-      const inicio = document.getElementById('dataInicio').value;
-      Papa.parse(file, {
-        header: true,
-        complete: (results) => {
-          trades = results.data
-            .filter(row => row.executed_timestamp && row.side && row.qty && row.price)
-            .map(row => {
-              const d = row.executed_timestamp.split('T')[0];
-              return {
-                data: d,
-                tipo: row.side.toLowerCase(),
-                par: row.coin_pair.replace('BRL', '/BRL'),
-                qtd: parseFloat(row.qty),
-                preco: parseFloat(row.price),
-                total: parseFloat(row.qty) * parseFloat(row.price)
-              };
-            })
-            .filter(t => !inicio || t.data >= inicio);
-          mostrarResultados();
-          document.getElementById('darfBtn').style.display = 'block';
-        }
-      });
-    }
-
-    function mostrarResultados() {
-      const tbody = document.querySelector('#result table tbody') || document.getElementById('result');
-      let html = '<table><thead><tr><th>Data</th><th>Tipo</th><th>Par</th><th>Qtd</th><th>Preço</th><th>Total</th></tr></thead><tbody>';
-      let compras = 0, vendas = 0;
-
-      trades.forEach(t => {
-        html += `<tr class="${t.tipo}"><td>${t.data}</td><td>${t.tipo.toUpperCase()}</td><td>${t.par}</td><td>${t.qtd.toFixed(6)}</td><td>R$ ${t.preco.toLocaleString()}</td><td>R$ ${t.total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td></tr>`;
-        if (t.tipo === 'buy') compras += t.total;
-        else vendas += t.total;
-      });
-
-      const lucro = vendas - compras;
-      const imposto = Math.max(0, vendas - 35000) * 0.15;
-
-      html += `</tbody></table><div class="summary"><div><span>Compras:</span> <strong>R$ ${compras.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div><div><span>Vendas:</span> <strong>R$ ${vendas.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></div><div><span>Lucro:</span> <strong>R$ ${lucro.toFixed(2)}</strong></div><div><span>Imposto:</span> <strong>R$ ${imposto.toFixed(2)}</strong></div></div><canvas id="chart"></canvas>`;
-
-      document.getElementById('result').innerHTML = html;
-
-      new Chart(document.getElementById('chart'), {
-        type: 'doughnut',
-        data: {
-          labels: ['Compras', 'Vendas', 'Lucro', 'Imposto'],
-          datasets: [{
-            data: [compras, vendas, Math.max(lucro, 0), imposto],
-            backgroundColor: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b']
-          }]
-        },
-        options: { responsive: true }
-      });
-    }
-
-    function gerarDARF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      doc.text('DARF - Código 4600', 105, 20, { align: 'center' });
-      doc.text(`Imposto: R$ ${document.querySelector('.summary strong:last-child').innerText}`, 20, 40);
-      doc.save('DARF_Cripto.pdf');
+      document.getElementById('resultado').innerHTML = `<pre class="text-xs">${JSON.stringify(data, null, 2)}</pre>`;
     }
   </script>
 </body>
